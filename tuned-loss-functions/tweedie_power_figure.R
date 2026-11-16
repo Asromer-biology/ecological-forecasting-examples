@@ -1,12 +1,19 @@
-# What the Tweedie power does to python survey catches
+# What the Tweedie power does to python survey removals
 #
 # A Tweedie response answers two questions about a survey in one
 # distribution: whether it caught anything, and how much it caught when it
 # did. The power sets the balance between the two at the same average.
-# Top panel: the distribution of catch among surveys with a catch at three
-# powers. Bottom panels: the share of surveys with no catch and the average
-# catch when there is one, across the whole range of the power, with the
-# three powers marked in their colours.
+# The amount is a survey's removal value (the paper's weighted removal
+# index), a continuous amount and not a count.
+# Top panel: the whole distribution of removal value at three powers. A
+# dot-topped stick at zero is the share of surveys with no catch, and the
+# curve beside it is the surveys with a catch. Sticks and curves share one
+# scale: a stick's height is the share of surveys at exactly zero, and a
+# curve's height is the share of surveys per one unit of removal value, so
+# the area under a curve is the share of surveys with a catch and stick
+# plus area is all surveys. Bottom panels: the share of surveys with no
+# catch and the average removal value when there is a catch, across the
+# whole range of the power, with the three powers marked in their colours.
 # Everything is computed from the Tweedie distribution itself (compound
 # Poisson-gamma). Nothing is fitted and no survey data are used.
 # Run from the repository root: Rscript tuned-loss-functions/tweedie_power_figure.R
@@ -39,11 +46,15 @@ curve_colour <- "#74A9CF"
 outline_colour <- "#023858"
 font <- "Arial"
 
-# Set the catch values the top panel is evaluated at, starting just above zero
+# Set the values the top panel is evaluated at, starting just above zero
 catch_grid <- seq(0.01, 13, by = 0.02)
 
-# Set the top of the top panel; the highest power is unbounded near zero and leaves it
-density_top <- 0.42
+# Set the top of the top panel; the highest power's curve is unbounded near zero and leaves it
+density_top <- 0.75
+
+# Set where the three sticks for no catch sit: side by side and a hair left of zero,
+# so the shortest stick stays clear of the highest power's curve where it climbs near zero
+stick_positions <- c(-0.45, -0.3, -0.15)
 
 # Set the output file beside this script
 out_file <- file.path("tuned-loss-functions", "tweedie_power_figure.png")
@@ -92,13 +103,15 @@ catch_density <- function(totals, p) {
 
 # Curves ------
 
-# Hold the catch distribution of each power
+# Hold the distribution of each power
 density_list <- vector("list", length(powers))
 
-# Compute the distribution of catch among surveys with a catch at each power
+# Compute the curve of each power: the density among surveys with a catch, scaled by the
+# share of surveys with a catch, so its height is a share of all surveys per unit of value
 for (i in seq_along(powers)) {
   density_list[[i]] <- data.frame(power = power_names[i], catch = catch_grid,
-                                  density = catch_density(catch_grid, powers[i]))
+                                  density = (1 - no_catch_share(powers[i])) *
+                                    catch_density(catch_grid, powers[i]))
 }
 
 # Stack the distributions and keep the powers in order
@@ -122,11 +135,22 @@ power_points <- data.frame(power_value = powers,
 print(power_points %>%
         mutate(across(where(is.numeric), ~ round(.x, 3))))
 
-# Confirm each distribution integrates to one and reproduces the average catch when there is one
+# Confirm each distribution integrates to one and reproduces the average when there is a catch
 for (i in seq_along(powers)) {
   total_area <- integrate(catch_density, lower = 0, upper = Inf, p = powers[i])$value
   mean_catch <- integrate(function(x) x * catch_density(x, powers[i]), lower = 0, upper = Inf)$value
   print(round(c(power = powers[i], area = total_area, mean_when_caught = mean_catch), 3))
+}
+
+# Confirm the three powers share one average once the surveys with no catch are counted
+print(round(power_points$mean_when_caught * (1 - power_points$no_catch), 3))
+
+# Confirm each stick plus the area under its curve, as drawn, adds to all surveys
+for (i in seq_along(powers)) {
+  curve_area <- integrate(function(x) (1 - no_catch_share(powers[i])) * catch_density(x, powers[i]),
+                          lower = 0, upper = Inf)$value
+  print(round(c(power = powers[i], stick = no_catch_share(powers[i]), curve_area = curve_area,
+                total = no_catch_share(powers[i]) + curve_area), 3))
 }
 
 # Plot ------
@@ -145,24 +169,31 @@ theme_panels <- theme_classic(base_size = 14) +
                                   margin = margin(b = 6)),
         plot.margin = margin(8, 16, 8, 10))
 
-# Place a direct label beside each distribution, clear of the other curves
-curve_labels <- data.frame(power = factor(power_names, levels = power_names),
-                           catch = c(4.9, 2.2, 0.7), density = c(0.2, 0.3, 0.38))
+# Give each power its stick: the share of surveys with no catch, at its place left of the curves
+power_sticks <- power_points %>%
+  mutate(position = stick_positions)
 
-# Top panel: overlapping distributions of catch among surveys with a catch
+# Place a direct label beside each distribution, clear of the other curves and the sticks
+curve_labels <- data.frame(power = factor(power_names, levels = power_names),
+                           catch = c(4.4, 1.9, 0.75), density = c(0.115, 0.2, 0.36))
+
+# Top panel: a stick at zero for surveys with no catch and a curve for surveys with a catch
 panel_catch <- ggplot(density_curves, aes(x = catch, y = pmin(density, density_top * 1.2))) +
   geom_area(aes(fill = power), alpha = 0.35, position = "identity") +
   geom_line(aes(colour = power), linewidth = 0.9) +
+  geom_segment(data = power_sticks, aes(x = position, xend = position, y = 0, yend = no_catch,
+                                        colour = power), linewidth = 1.1) +
+  geom_point(data = power_sticks, aes(x = position, y = no_catch, fill = power), shape = 21,
+             colour = outline_colour, stroke = 0.7, size = 3.4) +
   geom_text(data = curve_labels, aes(y = density, label = power, colour = power), hjust = 0,
             size = 4.6, family = font, fontface = "bold") +
   scale_fill_manual(values = power_colours, guide = "none") +
   scale_colour_manual(values = power_colours, guide = "none") +
   scale_x_continuous(breaks = seq(0, 12, by = 2)) +
-  coord_cartesian(xlim = c(0, 12.5), ylim = c(0, density_top), expand = FALSE) +
-  labs(x = "Python catch per survey", y = "Share of surveys\nwith a catch",
-       title = "Python surveys with a catch") +
-  theme_panels +
-  theme(axis.text.y = element_blank(), axis.ticks.y = element_blank())
+  scale_y_continuous(labels = scales::label_percent(), breaks = seq(0, 0.75, by = 0.25)) +
+  coord_cartesian(xlim = c(-0.8, 12.5), ylim = c(0, density_top), expand = FALSE) +
+  labs(x = "Removal value per survey", y = "Share of surveys") +
+  theme_panels
 
 # Bottom left: share of surveys with no catch across the power, three powers marked
 panel_no_catch <- ggplot(power_curve, aes(x = power_value, y = no_catch)) +
@@ -176,7 +207,7 @@ panel_no_catch <- ggplot(power_curve, aes(x = power_value, y = no_catch)) +
   labs(x = "Tweedie power", y = "Surveys with\nno catch", title = "Any catch?") +
   theme_panels
 
-# Bottom right: average catch among surveys with a catch across the power
+# Bottom right: average value among surveys with a catch across the power
 panel_mean <- ggplot(power_curve, aes(x = power_value, y = mean_when_caught)) +
   geom_line(colour = curve_colour, linewidth = 1.2) +
   geom_point(data = power_points, aes(fill = power), shape = 21, colour = outline_colour,
@@ -185,7 +216,8 @@ panel_mean <- ggplot(power_curve, aes(x = power_value, y = mean_when_caught)) +
   scale_x_continuous(breaks = seq(1, 2, by = 0.2)) +
   scale_y_continuous(breaks = seq(0, 6, by = 2)) +
   coord_cartesian(xlim = c(1, 2), ylim = c(0, 6), expand = FALSE) +
-  labs(x = "Tweedie power", y = "Average catch\nwhen there is one", title = "How many?") +
+  labs(x = "Tweedie power", y = "Average removal value\nwhen there is a catch",
+       title = "How much?") +
   theme_panels
 
 # Put the distributions over the two parts they split into

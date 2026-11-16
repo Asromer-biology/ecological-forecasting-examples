@@ -4,7 +4,7 @@ Most survey data are mostly zeros. Most surveys catch nothing, and the ones that
 
 ![Three Tweedie distributions with the same average catch, and what the power does to the share of surveys with no catch and to the average catch when there is one](tweedie_power_figure.png)
 
-A Tweedie response answers two questions about a survey in one distribution. Did it catch anything, and how much did it catch when it did? The power sets the balance between the two. All three curves above have the same average catch.
+A Tweedie response answers two questions about a survey in one distribution. Did it catch anything, and how much did it catch when it did? The power sets the balance between the two. All three distributions above have the same average. In the top panel each stick at zero is the share of surveys with no catch, and the curve beside it is the surveys with a catch. The removal value on its axis is the paper's weighted removal index, which is a continuous amount and not a count of pythons.
 
 ## What is here
 
